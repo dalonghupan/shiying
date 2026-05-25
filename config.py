@@ -1,5 +1,4 @@
 """全局配置常量"""
-import os
 from pathlib import Path
 
 SUPPORTED_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
