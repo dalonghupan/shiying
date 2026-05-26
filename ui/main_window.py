@@ -119,12 +119,45 @@ class MainWindow(QMainWindow):
             worker.signals.result.connect(self._on_score_result)
 
     def _filter_ai(self):
-        """AI 模式筛选（Task 16 实现完整逻辑）"""
+        """AI 模型筛选"""
+        import asyncio
+        from core.ai_agent import AIAgent, AIConfig
+
         api_url = self.sidebar.get_api_url()
+        api_key = self.sidebar.get_api_key()
+
         if not api_url:
             QMessageBox.warning(self, "配置错误", "请先配置 AI 模型接口地址")
             return
-        QMessageBox.information(self, "提示", "AI 筛选功能将在后续任务中实现")
+
+        config = AIConfig(api_url=api_url, api_key=api_key)
+        agent = AIAgent(config)
+        total = len(self._image_paths)
+        self._ai_completed = 0
+
+        async def run_ai_scoring():
+            for path in self._image_paths:
+                try:
+                    result = await agent.score_image(path)
+                    self._scores[path] = result["score"]
+                    self.preview_panel.update_score(path, result["score"], "ai")
+                except Exception as e:
+                    self._scores[path] = 0.0
+                    self.preview_panel.update_score(path, 0.0, "ai(error)")
+                finally:
+                    self._ai_completed += 1
+                    self.status_bar.show_progress(self._ai_completed, total)
+            await agent.close()
+            self._update_stats()
+            self.status_bar.set_status(f"AI 筛选完成，共 {total} 张图片")
+
+        def run_async():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(run_ai_scoring())
+
+        worker = self.thread_pool.submit(run_async)
+        worker.signals.error.connect(lambda err: self.status_bar.set_status(f"AI 筛选出错: {err}"))
 
     def _on_score_result(self, result: tuple[str, float]):
         path, score = result
@@ -157,12 +190,29 @@ class MainWindow(QMainWindow):
         self.status_bar.set_status(f"导出完成: 成功 {result['success']}, 跳过 {result['skipped']}, 失败 {result['failed']}")
 
     def _test_ai_connection(self):
-        from PyQt6.QtWidgets import QFileDialog
+        """测试 AI 模型连接"""
+        import asyncio
+        from core.ai_agent import AIAgent, AIConfig
+
         api_url = self.sidebar.get_api_url()
+        api_key = self.sidebar.get_api_key()
+
         if not api_url:
             QMessageBox.warning(self, "配置错误", "请先填写接口地址")
             return
-        QMessageBox.information(self, "连接测试", "AI 连接测试将在 Task 16 实现")
+
+        config = AIConfig(api_url=api_url, api_key=api_key)
+        agent = AIAgent(config)
+
+        def test():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(agent.test_connection())
+
+        worker = self.thread_pool.submit(test)
+        worker.signals.result.connect(
+            lambda ok: QMessageBox.information(self, "连接测试", "连接成功!" if ok else "连接失败，请检查配置")
+        )
 
     def _update_stats(self):
         total = len(self._image_paths)
