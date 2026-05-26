@@ -31,7 +31,8 @@
       "Bash(python3.12 -m pip install httpx)",
       "Bash(python3.12 -m pip install httpx --break-system-packages)",
       "Bash(chmod +x *)",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(rtk read *)"
     ]
   }
 }
