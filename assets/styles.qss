@@ -1,0 +1,105 @@
+/* assets/styles.qss */
+/* 拾影·朋友圈智能美图筛选系统 样式表 */
+
+QMainWindow {
+    background-color: #FFFFFF;
+}
+
+QPushButton {
+    background-color: #F8E8EE;
+    border: 1px solid #E0E0E0;
+    border-radius: 4px;
+    padding: 6px 16px;
+    font-size: 14px;
+    color: #333333;
+}
+
+QPushButton:hover {
+    background-color: #E8D5E3;
+}
+
+QPushButton:pressed {
+    background-color: #D4C1D0;
+}
+
+QPushButton:disabled {
+    background-color: #F0F0F0;
+    color: #AAAAAA;
+}
+
+QGroupBox {
+    border: 1px solid #E0E0E0;
+    border-radius: 4px;
+    margin-top: 8px;
+    padding-top: 16px;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 8px;
+    padding: 0 4px;
+}
+
+QSlider::groove:horizontal {
+    height: 6px;
+    background: #E0E0E0;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    background: #F8E8EE;
+    border: 1px solid #D4C1D0;
+    width: 16px;
+    height: 16px;
+    margin: -5px 0;
+    border-radius: 8px;
+}
+
+QSlider::sub-page:horizontal {
+    background: #E8D5E3;
+    border-radius: 3px;
+}
+
+QLineEdit {
+    border: 1px solid #E0E0E0;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 13px;
+}
+
+QLineEdit:focus {
+    border-color: #E8D5E3;
+}
+
+QRadioButton {
+    font-size: 13px;
+    spacing: 4px;
+}
+
+QRadioButton::indicator {
+    width: 14px;
+    height: 14px;
+}
+
+QProgressBar {
+    border: 1px solid #E0E0E0;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 12px;
+}
+
+QProgressBar::chunk {
+    background-color: #E8D5E3;
+    border-radius: 3px;
+}
+
+QScrollArea {
+    border: none;
+}
+
+QLabel {
+    font-size: 13px;
+    color: #333333;
+}
