@@ -1,7 +1,8 @@
 """AI 大模型 Agent 调度模块"""
 import base64
 import json
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 import httpx
 from config import AI_DEFAULT_TIMEOUT, AI_BATCH_SIZE, AI_BATCH_DELAY
 
@@ -11,6 +12,7 @@ class AIConfig:
     """AI 模型配置"""
     api_url: str
     api_key: str = ""
+    model_name: str = "deepseek-chat"
     timeout: int = AI_DEFAULT_TIMEOUT
 
 
@@ -35,44 +37,71 @@ class AIAgent:
 3. mood - 氛围感
 4. suitability - 朋友圈适配度
 
-请返回 JSON 格式：
+请直接返回 JSON 格式，不要包含其他内容：
 {"quality": 分数, "lighting": 分数, "mood": 分数, "suitability": 分数}"""
 
         headers = {"Content-Type": "application/json"}
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
 
+        # 构造消息内容（支持图片和纯文本模型）
+        content = [{"type": "text", "text": prompt}]
+        try:
+            # 尝试添加图片（视觉模型支持）
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
+            })
+        except Exception:
+            pass
+
         payload = {
-            "model": "default",
+            "model": self.config.model_name,
             "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
-                        }
-                    ]
-                }
+                {"role": "user", "content": content}
             ],
-            "max_tokens": 200,
+            "max_tokens": 300,
         }
 
+        response = await self._client.post(
+            self.config.api_url,
+            json=payload,
+            headers=headers,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # 解析响应内容
+        content_text = data["choices"][0]["message"]["content"]
+        details = self._parse_score_json(content_text)
+        avg_score = sum(details.values()) / len(details)
+        return {"score": round(avg_score, 1), "details": details}
+
+    def _parse_score_json(self, text: str) -> dict:
+        """从 AI 响应中解析评分 JSON（容错处理）"""
+        # 尝试直接解析
         try:
-            response = await self._client.post(
-                self.config.api_url,
-                json=payload,
-                headers=headers,
-            )
-            response.raise_for_status()
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            details = json.loads(content)
-            avg_score = sum(details.values()) / len(details)
-            return {"score": round(avg_score, 1), "details": details}
-        except Exception as e:
-            raise RuntimeError(f"AI 评分失败: {e}")
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # 尝试从 markdown 代码块中提取
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # 尝试从文本中提取第一个 JSON 对象
+        match = re.search(r"\{[^{}]*\}", text)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                pass
+
+        raise ValueError(f"无法从 AI 响应中解析评分: {text[:200]}")
 
     async def test_connection(self) -> bool:
         """测试模型服务连通性"""

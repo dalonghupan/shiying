@@ -128,27 +128,39 @@ class MainWindow(QMainWindow):
 
         api_url = self.sidebar.get_api_url()
         api_key = self.sidebar.get_api_key()
+        model_name = self.sidebar.get_model_name()
 
         if not api_url or not api_url.startswith(("http://", "https://")):
             QMessageBox.warning(self, "配置错误", "请先配置有效的 AI 模型接口地址（以 http:// 或 https:// 开头）")
             return
 
-        config = AIConfig(api_url=api_url, api_key=api_key)
+        if not model_name:
+            QMessageBox.warning(self, "配置错误", "请填写模型名称（如 deepseek-chat）")
+            return
+
+        config = AIConfig(api_url=api_url, api_key=api_key, model_name=model_name)
         agent = AIAgent(config)
         total = len(self._image_paths)
         self._ai_completed = 0
+        consecutive_errors = 0
 
         async def run_ai_scoring():
+            nonlocal consecutive_errors
             for path in self._image_paths:
                 try:
                     result = await agent.score_image(path)
                     self._scores[path] = result["score"]
                     self._score_sources[path] = "ai"
                     self.preview_panel.update_score(path, result["score"], "ai")
+                    consecutive_errors = 0
                 except Exception as e:
                     self._scores[path] = 0.0
                     self._score_sources[path] = "ai"
                     self.preview_panel.update_score(path, 0.0, "ai(error)")
+                    consecutive_errors += 1
+                    # 连续失败 3 次，停止筛选
+                    if consecutive_errors >= 3:
+                        raise RuntimeError(f"连续 {consecutive_errors} 次评分失败，可能是模型配置错误: {e}")
                 finally:
                     self._ai_completed += 1
                     self.status_bar.show_progress(self._ai_completed, total)
@@ -160,10 +172,17 @@ class MainWindow(QMainWindow):
         def run_async():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            loop.run_until_complete(run_ai_scoring())
+            try:
+                loop.run_until_complete(run_ai_scoring())
+            except Exception as e:
+                loop.run_until_complete(agent.close())
+                raise e
 
         worker = self.thread_pool.submit(run_async)
-        worker.signals.error.connect(lambda err: self.status_bar.set_status(f"AI 筛选出错: {err}"))
+        worker.signals.error.connect(lambda err: (
+            QMessageBox.critical(self, "AI 筛选出错", f"筛选中断：{err}\n\n请检查模型配置是否正确。"),
+            self.status_bar.set_status("AI 筛选出错"),
+        ))
 
     def _on_score_result(self, result: tuple[str, float]):
         path, score = result
@@ -208,9 +227,10 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "配置错误", "请填写有效的接口地址（以 http:// 或 https:// 开头）")
             return
 
+        model_name = self.sidebar.get_model_name()
         self.status_bar.set_status("正在测试连接...")
 
-        config = AIConfig(api_url=api_url, api_key=api_key)
+        config = AIConfig(api_url=api_url, api_key=api_key, model_name=model_name or "deepseek-chat")
         agent = AIAgent(config)
 
         def test():

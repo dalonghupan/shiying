@@ -53,16 +53,19 @@ class Sidebar(QWidget):
         model_group = QGroupBox("AI 模型配置")
         model_layout = QFormLayout()
         self.api_url_input = QLineEdit()
-        self.api_url_input.setPlaceholderText("http://localhost:8080/v1/chat/completions")
+        self.api_url_input.setPlaceholderText("https://api.deepseek.com/v1/chat/completions")
         self.api_key_input = QLineEdit()
-        self.api_key_input.setPlaceholderText("可选")
+        self.api_key_input.setPlaceholderText("sk-...")
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.model_name_input = QLineEdit()
+        self.model_name_input.setPlaceholderText("deepseek-chat / deepseek-vl")
         self.test_btn = QPushButton("测试连接")
         self.test_btn.clicked.connect(self.test_connection_clicked.emit)
         self.save_btn = QPushButton("保存配置")
         self.save_btn.clicked.connect(self._save_config)
         model_layout.addRow("接口地址:", self.api_url_input)
         model_layout.addRow("API Key:", self.api_key_input)
+        model_layout.addRow("模型名称:", self.model_name_input)
         model_layout.addRow(self.test_btn)
         model_layout.addRow(self.save_btn)
         model_group.setLayout(model_layout)
@@ -99,8 +102,12 @@ class Sidebar(QWidget):
         config = {
             "api_url": self.api_url_input.text().strip(),
             "api_key": self.api_key_input.text().strip(),
+            "model_name": self.model_name_input.text().strip(),
         }
         self.config_saved.emit(config)
+
+    def get_model_name(self) -> str:
+        return self.model_name_input.text().strip()
 
     def update_stats(self, total: int, selected: int, avg_score: float, max_score: float):
         self.total_label.setText(f"总图片: {total}")
