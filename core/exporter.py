@@ -2,6 +2,9 @@
 import shutil
 from pathlib import Path
 from typing import Callable
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def export_images(
@@ -37,7 +40,8 @@ def export_images(
             try:
                 shutil.copy2(str(src), str(dst_file))
                 success += 1
-            except Exception:
+            except Exception as e:
+                logger.warning("导出失败: %s — %s", src_path, e)
                 failed += 1
 
         if on_progress:

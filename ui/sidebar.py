@@ -54,11 +54,18 @@ class Sidebar(QWidget):
         model_layout = QFormLayout()
         self.api_url_input = QLineEdit()
         self.api_url_input.setPlaceholderText("https://api.deepseek.com/v1/chat/completions")
+        self.api_url_input.setToolTip("DeepSeek: https://api.deepseek.com/v1/chat/completions\nOpenAI: https://api.openai.com/v1/chat/completions\n其他兼容 OpenAI 格式的接口地址")
         self.api_key_input = QLineEdit()
         self.api_key_input.setPlaceholderText("sk-...")
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.model_name_input = QLineEdit()
-        self.model_name_input.setPlaceholderText("deepseek-chat / deepseek-vl")
+        self.model_name_input.setPlaceholderText("gpt-4o (需视觉模型)")
+        self.model_name_input.setToolTip(
+            "⚠️ DeepSeek 不支持图片分析，请使用其他提供商：\n"
+            "- OpenAI: gpt-4o, gpt-4-turbo\n"
+            "- Anthropic: claude-3-opus, claude-3-sonnet\n"
+            "- Google: gemini-pro-vision"
+        )
         self.test_btn = QPushButton("测试连接")
         self.test_btn.clicked.connect(self.test_connection_clicked.emit)
         self.save_btn = QPushButton("保存配置")

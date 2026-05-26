@@ -4,8 +4,10 @@ from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 from ui.main_window import MainWindow
+from utils.logger import setup_logging
 
 def main():
+    setup_logging()
     app = QApplication(sys.argv)
     app.setApplicationName("拾影")
     app.setStyle("Fusion")

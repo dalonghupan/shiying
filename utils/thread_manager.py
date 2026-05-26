@@ -1,5 +1,8 @@
 """线程池管理"""
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class WorkerSignals(QObject):
@@ -23,6 +26,7 @@ class Worker(QRunnable):
             result = self.fn(*self.args, **self.kwargs)
             self.signals.result.emit(result)
         except Exception as e:
+            logger.error("线程执行异常: %s", e, exc_info=True)
             self.signals.error.emit(str(e))
         finally:
             self.signals.finished.emit()

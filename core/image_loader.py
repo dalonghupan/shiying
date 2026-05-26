@@ -5,7 +5,10 @@ from PyQt6.QtGui import QImage, QPixmap
 from utils.image_utils import get_image_files
 from utils.cache import create_thumbnail
 from utils.thread_manager import ThreadPoolManager
+from utils.logger import get_logger
 from config import THUMBNAIL_SIZE, THUMBNAIL_LOAD_BATCH
+
+logger = get_logger(__name__)
 
 
 class ImageLoader(QObject):
@@ -67,6 +70,7 @@ class ImageLoader(QObject):
     def _on_image_error(self, error_msg: str):
         """单张图片加载失败回调"""
         self._processed_count += 1
+        logger.warning("图片加载失败: %s", error_msg)
         self.error_occurred.emit("", error_msg)
         self.batch_loaded.emit(self._processed_count)
         self._check_batch_complete()
@@ -74,6 +78,7 @@ class ImageLoader(QObject):
     def _check_batch_complete(self):
         """检查当前批次是否完成，触发下一批"""
         if self._processed_count >= len(self._image_paths):
+            logger.info("全部图片加载完成，共 %d 张", self._processed_count)
             self.all_loaded.emit()
         elif self._processed_count % THUMBNAIL_LOAD_BATCH == 0:
             self._load_next_batch()

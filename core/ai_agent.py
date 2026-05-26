@@ -5,6 +5,9 @@ import re
 from dataclasses import dataclass, field
 import httpx
 from config import AI_DEFAULT_TIMEOUT, AI_BATCH_SIZE, AI_BATCH_DELAY
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -19,9 +22,22 @@ class AIConfig:
 class AIAgent:
     """AI 大模型 Agent"""
 
+    # 支持图片输入的视觉模型关键词
+    VISION_KEYWORDS = {"gpt-4o", "gpt-4-turbo", "claude-3", "gemini-pro-vision"}
+    # 不支持图片的提供商/模型前缀
+    TEXT_ONLY_PREFIXES = {"deepseek"}
+
     def __init__(self, config: AIConfig):
         self.config = config
         self._client = httpx.AsyncClient(timeout=config.timeout)
+
+    def _is_vision_model(self) -> bool:
+        """判断当前模型是否支持图片输入"""
+        model = self.config.model_name.lower()
+        # 先检查是否为已知不支持图片的提供商
+        if any(model.startswith(prefix) for prefix in self.TEXT_ONLY_PREFIXES):
+            return False
+        return any(kw in model for kw in self.VISION_KEYWORDS)
 
     async def score_image(self, image_path: str) -> dict:
         """对单张图片进行 AI 评分
@@ -29,6 +45,16 @@ class AIAgent:
         Returns:
             {"score": float, "details": {"quality": float, "lighting": float, "mood": float, "suitability": float}}
         """
+        if not self._is_vision_model():
+            raise ValueError(
+                f"模型 '{self.config.model_name}' 不支持图片输入。\n"
+                f"DeepSeek API 仅支持文本，不支持图片分析。\n"
+                f"请使用支持视觉的 API 提供商：\n"
+                f"- OpenAI: gpt-4o, gpt-4-turbo\n"
+                f"- Anthropic: claude-3-opus, claude-3-sonnet\n"
+                f"- Google: gemini-pro-vision"
+            )
+
         image_base64 = self._encode_image(image_path)
 
         prompt = """请对这张图片进行评分，用于朋友圈发布。评估以下维度（每个 0-100 分）：
@@ -44,16 +70,13 @@ class AIAgent:
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
 
-        # 构造消息内容（支持图片和纯文本模型）
-        content = [{"type": "text", "text": prompt}]
-        try:
-            # 尝试添加图片（视觉模型支持）
-            content.append({
+        content = [
+            {"type": "text", "text": prompt},
+            {
                 "type": "image_url",
                 "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
-            })
-        except Exception:
-            pass
+            }
+        ]
 
         payload = {
             "model": self.config.model_name,
@@ -68,6 +91,12 @@ class AIAgent:
             json=payload,
             headers=headers,
         )
+
+        # 记录 API 错误响应体，便于排查
+        if response.status_code >= 400:
+            error_body = response.text
+            logger.error("AI API 错误 %d: %s\n请求体: %s", response.status_code, error_body, payload)
+
         response.raise_for_status()
         data = response.json()
 
@@ -75,6 +104,7 @@ class AIAgent:
         content_text = data["choices"][0]["message"]["content"]
         details = self._parse_score_json(content_text)
         avg_score = sum(details.values()) / len(details)
+        logger.debug("AI 评分完成: %s → %.1f", image_path, avg_score)
         return {"score": round(avg_score, 1), "details": details}
 
     def _parse_score_json(self, text: str) -> dict:
@@ -101,18 +131,32 @@ class AIAgent:
             except json.JSONDecodeError:
                 pass
 
+        logger.warning("AI 响应 JSON 解析失败: %s", text[:200])
         raise ValueError(f"无法从 AI 响应中解析评分: {text[:200]}")
 
     async def test_connection(self) -> bool:
         """测试模型服务连通性"""
         try:
+            # 尝试构造 /models 端点 URL
+            url = self.config.api_url
+            if "/chat/completions" in url:
+                url = url.replace("/chat/completions", "/models")
+            elif "/v1/" in url:
+                # 提取 base URL，拼接 /v1/models
+                base = url.split("/v1/")[0]
+                url = f"{base}/v1/models"
+            else:
+                # 直接用原 URL 测试（可能是用户自定义端点）
+                pass
+
             response = await self._client.get(
-                self.config.api_url.replace("/chat/completions", "/models"),
+                url,
                 headers={"Authorization": f"Bearer {self.config.api_key}"} if self.config.api_key else {},
                 timeout=5,
             )
             return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            logger.warning("AI 连接测试失败: %s", e)
             return False
 
     def _encode_image(self, image_path: str) -> str:

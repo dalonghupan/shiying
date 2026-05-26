@@ -3,6 +3,9 @@ import hashlib
 from pathlib import Path
 from PIL import Image
 from config import CACHE_DIR, THUMBNAIL_SIZE
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 def get_cache_path(image_path: str, size: tuple[int, int] = THUMBNAIL_SIZE) -> Path:
@@ -32,13 +35,17 @@ def create_thumbnail(image_path: str, size: tuple[int, int] = THUMBNAIL_SIZE) ->
     cached = get_cached_thumbnail(image_path, size)
     if cached is not None:
         return cached
-    img = Image.open(image_path)
-    img.thumbnail(size, Image.Resampling.LANCZOS)
-    # RGBA/P 模式需转 RGB 才能保存为 JPEG
-    if img.mode in ("RGBA", "P", "LA"):
-        img = img.convert("RGB")
-    save_thumbnail(image_path, img, size)
-    return img
+    try:
+        img = Image.open(image_path)
+        img.thumbnail(size, Image.Resampling.LANCZOS)
+        # RGBA/P 模式需转 RGB 才能保存为 JPEG
+        if img.mode in ("RGBA", "P", "LA"):
+            img = img.convert("RGB")
+        save_thumbnail(image_path, img, size)
+        return img
+    except Exception as e:
+        logger.warning("缩略图创建失败: %s — %s", image_path, e)
+        raise
 
 
 def clear_cache():

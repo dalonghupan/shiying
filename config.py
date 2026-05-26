@@ -5,6 +5,7 @@ SUPPORTED_FORMATS = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
 THUMBNAIL_SIZE = (256, 256)
 PREVIEW_SIZE = (512, 512)
 CACHE_DIR = Path.home() / ".shiying" / "cache"
+LOG_DIR = Path.home() / ".shiying" / "logs"
 SHARPNESS_WEIGHT = 0.6
 COMPOSITION_WEIGHT = 0.4
 AI_DEFAULT_TIMEOUT = 10

@@ -13,7 +13,10 @@ from core.image_loader import ImageLoader
 from core.scorer import score_image_algorithm
 from core.exporter import export_images
 from utils.thread_manager import ThreadPoolManager
+from utils.logger import get_logger
 from config import COLOR_PRIMARY, COLOR_BACKGROUND, COLOR_BORDER
+
+logger = get_logger(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -134,6 +137,10 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "配置错误", "请先配置有效的 AI 模型接口地址（以 http:// 或 https:// 开头）")
             return
 
+        if "/chat/completions" not in api_url and "/v1/" not in api_url:
+            QMessageBox.warning(self, "配置错误", "接口地址格式不正确，应包含 /v1/chat/completions\n\n示例：https://api.deepseek.com/v1/chat/completions")
+            return
+
         if not model_name:
             QMessageBox.warning(self, "配置错误", "请填写模型名称（如 deepseek-chat）")
             return
@@ -158,8 +165,10 @@ class MainWindow(QMainWindow):
                     self._score_sources[path] = "ai"
                     self.preview_panel.update_score(path, 0.0, "ai(error)")
                     consecutive_errors += 1
+                    logger.error("AI 评分失败: %s — %s", path, e, exc_info=True)
                     # 连续失败 3 次，停止筛选
                     if consecutive_errors >= 3:
+                        logger.warning("连续 %d 次评分失败，停止筛选", consecutive_errors)
                         raise RuntimeError(f"连续 {consecutive_errors} 次评分失败，可能是模型配置错误: {e}")
                 finally:
                     self._ai_completed += 1
@@ -180,6 +189,7 @@ class MainWindow(QMainWindow):
 
         worker = self.thread_pool.submit(run_async)
         worker.signals.error.connect(lambda err: (
+            logger.error("AI 筛选线程异常: %s", err),
             QMessageBox.critical(self, "AI 筛选出错", f"筛选中断：{err}\n\n请检查模型配置是否正确。"),
             self.status_bar.set_status("AI 筛选出错"),
         ))
@@ -213,6 +223,7 @@ class MainWindow(QMainWindow):
 
         self.status_bar.set_status("正在导出...")
         result = export_images(selected, dst_dir, lambda c, t: self.status_bar.show_progress(c, t))
+        logger.info("导出完成: 成功 %d, 跳过 %d, 失败 %d", result['success'], result['skipped'], result['failed'])
         self.status_bar.set_status(f"导出完成: 成功 {result['success']}, 跳过 {result['skipped']}, 失败 {result['failed']}")
 
     def _test_ai_connection(self):
@@ -225,6 +236,10 @@ class MainWindow(QMainWindow):
 
         if not api_url or not api_url.startswith(("http://", "https://")):
             QMessageBox.warning(self, "配置错误", "请填写有效的接口地址（以 http:// 或 https:// 开头）")
+            return
+
+        if "/chat/completions" not in api_url and "/v1/" not in api_url:
+            QMessageBox.warning(self, "配置错误", "接口地址格式不正确，应包含 /v1/chat/completions\n\n示例：https://api.deepseek.com/v1/chat/completions")
             return
 
         model_name = self.sidebar.get_model_name()
@@ -251,6 +266,7 @@ class MainWindow(QMainWindow):
             )
         )
         worker.signals.error.connect(lambda err: (
+            logger.error("AI 连接测试异常: %s", err),
             QMessageBox.warning(self, "连接测试", f"连接异常: {err}"),
             self.status_bar.set_status("就绪"),
         ))
