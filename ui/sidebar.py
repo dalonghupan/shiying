@@ -29,8 +29,8 @@ class Sidebar(QWidget):
         self.mode_algorithm = QRadioButton("基础算法")
         self.mode_ai = QRadioButton("AI 大模型")
         self.mode_algorithm.setChecked(True)
-        self.mode_algorithm.toggled.connect(lambda: self.mode_changed.emit("algorithm"))
-        self.mode_ai.toggled.connect(lambda: self.mode_changed.emit("ai"))
+        self.mode_algorithm.toggled.connect(self._on_mode_toggled)
+        self.mode_ai.toggled.connect(self._on_mode_toggled)
         mode_layout.addWidget(self.mode_algorithm)
         mode_layout.addWidget(self.mode_ai)
         mode_group.setLayout(mode_layout)
@@ -66,7 +66,9 @@ class Sidebar(QWidget):
         model_layout.addRow(self.test_btn)
         model_layout.addRow(self.save_btn)
         model_group.setLayout(model_layout)
+        self.model_group = model_group
         layout.addWidget(model_group)
+        model_group.hide()  # 默认隐藏，选择 AI 模式时才显示
 
         # 统计信息
         stats_group = QGroupBox("统计信息")
@@ -87,6 +89,11 @@ class Sidebar(QWidget):
     def _on_threshold_changed(self, value):
         self.threshold_label.setText(f"阈值: {value}")
         self.threshold_changed.emit(value)
+
+    def _on_mode_toggled(self):
+        is_ai = self.mode_ai.isChecked()
+        self.model_group.setVisible(is_ai)
+        self.mode_changed.emit("ai" if is_ai else "algorithm")
 
     def _save_config(self):
         config = {

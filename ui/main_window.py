@@ -201,18 +201,32 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "配置错误", "请先填写接口地址")
             return
 
+        self.status_bar.set_status("正在测试连接...")
+
         config = AIConfig(api_url=api_url, api_key=api_key)
         agent = AIAgent(config)
 
         def test():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            return loop.run_until_complete(agent.test_connection())
+            try:
+                return loop.run_until_complete(agent.test_connection())
+            except Exception:
+                return False
+            finally:
+                loop.run_until_complete(agent.close())
 
         worker = self.thread_pool.submit(test)
         worker.signals.result.connect(
-            lambda ok: QMessageBox.information(self, "连接测试", "连接成功!" if ok else "连接失败，请检查配置")
+            lambda ok: (
+                QMessageBox.information(self, "连接测试", "连接成功!" if ok else "连接失败，请检查配置"),
+                self.status_bar.set_status("就绪"),
+            )
         )
+        worker.signals.error.connect(lambda err: (
+            QMessageBox.warning(self, "连接测试", f"连接异常: {err}"),
+            self.status_bar.set_status("就绪"),
+        ))
 
     def _update_stats(self):
         total = len(self._image_paths)
