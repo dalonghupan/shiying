@@ -50,6 +50,7 @@ class ImageLoader(QObject):
         data = pil_img.tobytes("raw", "RGB")
         qimg = QImage(data, pil_img.width, pil_img.height, pil_img.width * 3, QImage.Format.Format_RGB888)
         pixmap = QPixmap.fromImage(qimg)
+        del pil_img, data, qimg  # 显式释放
         return image_path, pixmap
 
     def _on_image_loaded(self, result: tuple[str, QPixmap]):
