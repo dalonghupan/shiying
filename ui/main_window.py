@@ -25,7 +25,8 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1200, 800)
 
         self._image_paths: list[str] = []
-        self._scores: dict[str, float] = {}
+        self._scores: dict[str, float] = {}           # path -> score
+        self._score_sources: dict[str, str] = {}      # path -> "algorithm" / "ai"
         self._current_mode = "algorithm"
 
         self._setup_ui()
@@ -79,6 +80,8 @@ class MainWindow(QMainWindow):
         self.preview_panel.clear()
         self._image_paths.clear()
         self._scores.clear()
+        self._score_sources.clear()
+        self.toolbar.enable_export(False)
         self.status_bar.set_status(f"正在加载: {dir_path}")
         self.loader.load_directory(dir_path)
 
@@ -126,8 +129,8 @@ class MainWindow(QMainWindow):
         api_url = self.sidebar.get_api_url()
         api_key = self.sidebar.get_api_key()
 
-        if not api_url:
-            QMessageBox.warning(self, "配置错误", "请先配置 AI 模型接口地址")
+        if not api_url or not api_url.startswith(("http://", "https://")):
+            QMessageBox.warning(self, "配置错误", "请先配置有效的 AI 模型接口地址（以 http:// 或 https:// 开头）")
             return
 
         config = AIConfig(api_url=api_url, api_key=api_key)
@@ -140,15 +143,18 @@ class MainWindow(QMainWindow):
                 try:
                     result = await agent.score_image(path)
                     self._scores[path] = result["score"]
+                    self._score_sources[path] = "ai"
                     self.preview_panel.update_score(path, result["score"], "ai")
                 except Exception as e:
                     self._scores[path] = 0.0
+                    self._score_sources[path] = "ai"
                     self.preview_panel.update_score(path, 0.0, "ai(error)")
                 finally:
                     self._ai_completed += 1
                     self.status_bar.show_progress(self._ai_completed, total)
             await agent.close()
             self._update_stats()
+            self.toolbar.enable_export(True)
             self.status_bar.set_status(f"AI 筛选完成，共 {total} 张图片")
 
         def run_async():
@@ -162,9 +168,10 @@ class MainWindow(QMainWindow):
     def _on_score_result(self, result: tuple[str, float]):
         path, score = result
         self._scores[path] = score
-        source = "algorithm" if self._current_mode == "algorithm" else "ai"
-        self.preview_panel.update_score(path, score, source)
+        self._score_sources[path] = "algorithm"
+        self.preview_panel.update_score(path, score, "algorithm")
         self._update_stats()
+        self.toolbar.enable_export(True)
 
     def _on_threshold_changed(self, threshold: int):
         self.preview_panel.select_above_score(threshold)
@@ -197,8 +204,8 @@ class MainWindow(QMainWindow):
         api_url = self.sidebar.get_api_url()
         api_key = self.sidebar.get_api_key()
 
-        if not api_url:
-            QMessageBox.warning(self, "配置错误", "请先填写接口地址")
+        if not api_url or not api_url.startswith(("http://", "https://")):
+            QMessageBox.warning(self, "配置错误", "请填写有效的接口地址（以 http:// 或 https:// 开头）")
             return
 
         self.status_bar.set_status("正在测试连接...")

@@ -34,6 +34,9 @@ def create_thumbnail(image_path: str, size: tuple[int, int] = THUMBNAIL_SIZE) ->
         return cached
     img = Image.open(image_path)
     img.thumbnail(size, Image.Resampling.LANCZOS)
+    # RGBA/P 模式需转 RGB 才能保存为 JPEG
+    if img.mode in ("RGBA", "P", "LA"):
+        img = img.convert("RGB")
     save_thumbnail(image_path, img, size)
     return img
 
