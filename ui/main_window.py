@@ -68,6 +68,8 @@ class MainWindow(QMainWindow):
         self.toolbar.directory_selected.connect(self._on_directory_selected)
         self.toolbar.filter_clicked.connect(self._on_filter_clicked)
         self.toolbar.export_clicked.connect(self._on_export_clicked)
+        self.toolbar.select_all_clicked.connect(self._on_select_all)
+        self.toolbar.sort_clicked.connect(self._on_sort)
 
         self.loader.thumbnail_ready.connect(self._on_thumbnail_ready)
         self.loader.batch_loaded.connect(self._on_batch_loaded)
@@ -210,6 +212,13 @@ class MainWindow(QMainWindow):
         self._current_mode = mode
         self.status_bar.set_status(f"已切换到{'基础算法' if mode == 'algorithm' else 'AI 大模型'}模式")
 
+    def _on_select_all(self):
+        self.preview_panel.toggle_select_all()
+        self._update_stats()
+
+    def _on_sort(self):
+        self.preview_panel.sort_by_score(self.toolbar.sort_descending)
+
     def _on_export_clicked(self):
         selected = self.preview_panel.get_selected_paths()
         if not selected:
@@ -277,37 +286,9 @@ class MainWindow(QMainWindow):
         scored = [s for s in self._scores.values() if s > 0]
         avg_score = sum(scored) / len(scored) if scored else 0.0
         max_score = max(scored) if scored else 0.0
-        self.sidebar.update_stats(total, selected, avg_score, max_score)
+        threshold = self.sidebar.threshold_slider.value()
+        above_threshold = sum(1 for s in self._scores.values() if s >= threshold)
+        self.sidebar.update_stats(total, selected, avg_score, max_score, above_threshold)
 
     def _apply_styles(self):
-        self.setStyleSheet(f"""
-            QMainWindow {{
-                background-color: {COLOR_BACKGROUND};
-            }}
-            QPushButton {{
-                background-color: {COLOR_PRIMARY};
-                border: 1px solid {COLOR_BORDER};
-                border-radius: 4px;
-                padding: 6px 16px;
-                font-size: 14px;
-            }}
-            QPushButton:hover {{
-                background-color: #E8D5E3;
-            }}
-            QPushButton:disabled {{
-                background-color: #F0F0F0;
-                color: #AAA;
-            }}
-            QGroupBox {{
-                border: 1px solid {COLOR_BORDER};
-                border-radius: 4px;
-                margin-top: 8px;
-                padding-top: 16px;
-                font-weight: bold;
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                left: 8px;
-                padding: 0 4px;
-            }}
-        """)
+        pass

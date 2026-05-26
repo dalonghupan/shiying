@@ -31,7 +31,7 @@ class ImageCard(QWidget):
 
         self.score_label = QLabel("--")
         self.score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.score_label.setStyleSheet("font-size: 12px; color: #666;")
+        self.score_label.setStyleSheet("font-size: 12px; color: #8E8EA0;")
         layout.addWidget(self.score_label)
 
         self.checkbox = QCheckBox("选择")
@@ -100,6 +100,31 @@ class PreviewPanel(QWidget):
     def select_above_score(self, threshold: float):
         for path, card in self.cards.items():
             card.checkbox.setChecked(card._score >= threshold)
+
+    def select_all(self, selected: bool = True):
+        for card in self.cards.values():
+            card.checkbox.setChecked(selected)
+
+    def deselect_all(self):
+        self.select_all(False)
+
+    def toggle_select_all(self):
+        all_checked = all(card.is_selected for card in self.cards.values())
+        self.select_all(not all_checked)
+
+    def sort_by_score(self, descending: bool = True):
+        sorted_items = sorted(
+            self.cards.items(),
+            key=lambda x: x[1]._score,
+            reverse=descending
+        )
+        # 重新排列到网格
+        cols = max(1, self.scroll_area.width() // 280)
+        for i, (path, card) in enumerate(sorted_items):
+            row = i // cols
+            col = i % cols
+            self.grid_layout.removeWidget(card)
+            self.grid_layout.addWidget(card, row, col)
 
     def clear(self):
         self.cards.clear()
