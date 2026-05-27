@@ -1,15 +1,16 @@
 """图片网格预览面板"""
 from PyQt6.QtWidgets import (
-    QWidget, QGridLayout, QLabel, QCheckBox, QVBoxLayout, QScrollArea
+    QWidget, QGridLayout, QLabel, QCheckBox, QVBoxLayout, QScrollArea, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import Qt, pyqtSignal, QEvent
+from PyQt6.QtGui import QPixmap, QMouseEvent, QResizeEvent
 from config import COLOR_SCORE_HIGH
 
 
 class ImageCard(QWidget):
     """单张图片卡片"""
     toggled = pyqtSignal(str, bool)
+    double_clicked = pyqtSignal(str)
 
     def __init__(self, image_path: str, pixmap: QPixmap, parent=None):
         super().__init__(parent)
@@ -38,18 +39,24 @@ class ImageCard(QWidget):
         self.checkbox.stateChanged.connect(self._on_toggled)
         layout.addWidget(self.checkbox)
 
-    def set_score(self, score: float, source: str = ""):
+    def set_score(self, score: float, source: str = "", threshold: float = 60):
         self._score = score
         self._source = source
         source_text = f"[{source}] " if source else ""
         self.score_label.setText(f"{source_text}{score:.1f} 分")
-        if score >= 80:
+        self.update_border(threshold)
+
+    def update_border(self, threshold: float = 60):
+        if self._score >= threshold:
             self.image_label.setStyleSheet(f"border: 2px solid {COLOR_SCORE_HIGH}; border-radius: 4px;")
         else:
             self.image_label.setStyleSheet("")
 
     def _on_toggled(self, state):
         self.toggled.emit(self.image_path, state == 2)
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
+        self.double_clicked.emit(self.image_path)
 
     @property
     def is_selected(self) -> bool:
@@ -59,6 +66,7 @@ class ImageCard(QWidget):
 class PreviewPanel(QWidget):
     """图片预览面板"""
     selection_changed = pyqtSignal()
+    image_double_clicked = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -75,24 +83,51 @@ class PreviewPanel(QWidget):
         self.grid_widget = QWidget()
         self.grid_layout = QGridLayout(self.grid_widget)
         self.grid_layout.setSpacing(8)
+        self.grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.scroll_area.setWidget(self.grid_widget)
+        self.grid_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         layout.addWidget(self.scroll_area)
 
     def add_image(self, image_path: str, pixmap: QPixmap):
         card = ImageCard(image_path, pixmap)
         card.toggled.connect(self._on_card_toggled)
+        card.double_clicked.connect(self.image_double_clicked.emit)
         self.cards[image_path] = card
-
+        # 直接追加到末尾，不触发全量重排
         count = len(self.cards) - 1
         cols = max(1, self.scroll_area.width() // 280)
         row = count // cols
         col = count % cols
         self.grid_layout.addWidget(card, row, col)
 
-    def update_score(self, image_path: str, score: float, source: str = ""):
+    def _relayout_grid(self):
+        """重新排列可见卡片到网格"""
+        cols = max(1, self.scroll_area.width() // 280)
+        visible_cards = [card for card in self.cards.values() if card.isVisible()]
+        # 先移除所有卡片
+        for card in self.cards.values():
+            self.grid_layout.removeWidget(card)
+        # 只排列可见卡片
+        for i, card in enumerate(visible_cards):
+            row = i // cols
+            col = i % cols
+            self.grid_layout.addWidget(card, row, col)
+        for c in range(cols):
+            self.grid_layout.setColumnStretch(c, 1)
+
+    def resizeEvent(self, event: QResizeEvent):
+        super().resizeEvent(event)
+        if self.cards:
+            self._relayout_grid()
+
+    def update_score(self, image_path: str, score: float, source: str = "", threshold: float = 60):
         if image_path in self.cards:
-            self.cards[image_path].set_score(score, source)
+            self.cards[image_path].set_score(score, source, threshold)
+
+    def refresh_borders(self, threshold: float):
+        for card in self.cards.values():
+            card.update_border(threshold)
 
     def get_selected_paths(self) -> list[str]:
         return [path for path, card in self.cards.items() if card.is_selected]
@@ -118,13 +153,12 @@ class PreviewPanel(QWidget):
             key=lambda x: x[1]._score,
             reverse=descending
         )
-        # 重新排列到网格
-        cols = max(1, self.scroll_area.width() // 280)
-        for i, (path, card) in enumerate(sorted_items):
-            row = i // cols
-            col = i % cols
-            self.grid_layout.removeWidget(card)
-            self.grid_layout.addWidget(card, row, col)
+        self.cards = dict(sorted_items)
+        self._relayout_grid()
+
+    def finalize_layout(self):
+        """所有图片加载完成后调用一次，完成最终布局"""
+        self._relayout_grid()
 
     def clear(self):
         self.cards.clear()
@@ -135,3 +169,18 @@ class PreviewPanel(QWidget):
 
     def _on_card_toggled(self, path: str, checked: bool):
         self.selection_changed.emit()
+
+    def show_all(self):
+        for card in self.cards.values():
+            card.setVisible(True)
+        self._relayout_grid()
+
+    def show_only_selected(self):
+        for card in self.cards.values():
+            card.setVisible(card.is_selected)
+        self._relayout_grid()
+
+    def show_only_above_threshold(self, threshold: float):
+        for card in self.cards.values():
+            card.setVisible(card._score >= threshold)
+        self._relayout_grid()

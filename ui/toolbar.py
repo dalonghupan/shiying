@@ -81,6 +81,10 @@ class Toolbar(QWidget):
     def enable_export(self, enabled: bool):
         self.export_btn.setEnabled(enabled)
 
+    def set_filter_running(self, running: bool):
+        self.filter_btn.setEnabled(not running)
+        self.filter_btn.setText("筛选中..." if running else "开始筛选")
+
     def reset_select_all(self):
         self._all_selected = False
         self.select_all_btn.setText("全选")

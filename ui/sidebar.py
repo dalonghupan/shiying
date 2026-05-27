@@ -3,7 +3,31 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGroupBox, QFormLayout, QLineEdit,
     QSlider, QLabel, QPushButton, QRadioButton, QComboBox
 )
-from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import pyqtSignal, Qt, QEvent
+from PyQt6.QtGui import QMouseEvent
+
+
+class ClickableLabel(QLabel):
+    """可点击的标签"""
+    clicked = pyqtSignal()
+
+    def __init__(self, text="", parent=None):
+        super().__init__(text, parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+
+
+class JumpSlider(QSlider):
+    """点击轨道直接跳转到鼠标位置的滑块，同时支持拖动"""
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton:
+            val = self.minimum() + (self.maximum() - self.minimum()) * event.position().x() / self.width()
+            self.setValue(int(val))
+        super().mousePressEvent(event)
 
 
 # 内置 AI 模型提供商配置
@@ -38,6 +62,7 @@ class Sidebar(QWidget):
     mode_changed = pyqtSignal(str)
     test_connection_clicked = pyqtSignal()
     config_saved = pyqtSignal(dict)
+    stat_clicked = pyqtSignal(str)  # "total" / "selected" / "above_threshold"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -64,7 +89,7 @@ class Sidebar(QWidget):
         # 阈值调节
         threshold_group = QGroupBox("筛选阈值")
         threshold_layout = QVBoxLayout()
-        self.threshold_slider = QSlider(Qt.Orientation.Horizontal)
+        self.threshold_slider = JumpSlider(Qt.Orientation.Horizontal)
         self.threshold_slider.setRange(0, 100)
         self.threshold_slider.setValue(60)
         self.threshold_label = QLabel("阈值: 60")
@@ -122,9 +147,15 @@ class Sidebar(QWidget):
         # 统计信息
         stats_group = QGroupBox("统计信息")
         stats_layout = QVBoxLayout()
-        self.total_label = QLabel("总图片: 0")
-        self.selected_label = QLabel("已选择: 0")
-        self.above_threshold_label = QLabel("高于阈值: 0")
+        self.total_label = ClickableLabel("总图片: 0")
+        self.total_label.setStyleSheet("padding: 2px;")
+        self.total_label.clicked.connect(lambda: self.stat_clicked.emit("total"))
+        self.selected_label = ClickableLabel("已选择: 0")
+        self.selected_label.setStyleSheet("padding: 2px;")
+        self.selected_label.clicked.connect(lambda: self.stat_clicked.emit("selected"))
+        self.above_threshold_label = ClickableLabel("高于阈值: 0")
+        self.above_threshold_label.setStyleSheet("padding: 2px;")
+        self.above_threshold_label.clicked.connect(lambda: self.stat_clicked.emit("above_threshold"))
         self.avg_score_label = QLabel("平均分: --")
         self.max_score_label = QLabel("最高分: --")
         stats_layout.addWidget(self.total_label)
@@ -188,6 +219,12 @@ class Sidebar(QWidget):
         self.above_threshold_label.setText(f"高于阈值: {above_threshold}")
         self.avg_score_label.setText(f"平均分: {avg_score:.1f}")
         self.max_score_label.setText(f"最高分: {max_score:.1f}")
+
+        clickable_style = "padding: 2px; color: #7C4DFF; text-decoration: underline;"
+        normal_style = "padding: 2px; color: #8E8EA0;"
+        self.total_label.setStyleSheet(clickable_style if total > 0 else normal_style)
+        self.selected_label.setStyleSheet(clickable_style if selected > 0 else normal_style)
+        self.above_threshold_label.setStyleSheet(clickable_style if above_threshold > 0 else normal_style)
 
     def get_api_url(self) -> str:
         return self.api_url_input.text().strip()

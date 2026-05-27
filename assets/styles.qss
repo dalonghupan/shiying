@@ -117,6 +117,62 @@ QScrollArea {
     background-color: transparent;
 }
 
+QScrollBar:vertical {
+    border: none;
+    background: #F0EEF8;
+    width: 8px;
+    margin: 0;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical {
+    background: #B388FF;
+    min-height: 40px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #7C4DFF;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+QScrollBar:horizontal {
+    border: none;
+    background: #F0EEF8;
+    height: 8px;
+    margin: 0;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:horizontal {
+    background: #B388FF;
+    min-width: 40px;
+    border-radius: 4px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: #7C4DFF;
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
 QLabel {
     font-size: 13px;
     color: #2D2D3F;
@@ -124,28 +180,45 @@ QLabel {
 
 QComboBox {
     border: 1px solid #E8E0F0;
-    border-radius: 6px;
-    padding: 6px 10px;
+    border-radius: 8px;
+    padding: 8px 12px;
     font-size: 13px;
     color: #2D2D3F;
     background-color: #FFFFFF;
+    min-height: 20px;
+}
+
+QComboBox:hover {
+    border-color: #B388FF;
 }
 
 QComboBox:focus {
     border-color: #7C4DFF;
+    border-width: 2px;
 }
 
 QComboBox::drop-down {
     border: none;
-    width: 24px;
+    width: 32px;
+    subcontrol-position: center right;
+}
+
+QComboBox::down-arrow {
+    image: none;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #7C4DFF;
+    margin-right: 8px;
 }
 
 QComboBox QAbstractItemView {
     border: 1px solid #E8E0F0;
-    border-radius: 6px;
+    border-radius: 8px;
     background-color: #FFFFFF;
-    selection-background-color: #E8E0F0;
-    selection-color: #2D2D3F;
+    selection-background-color: #EDE7F6;
+    selection-color: #7C4DFF;
+    padding: 4px;
+    outline: none;
 }
 
 QCheckBox {

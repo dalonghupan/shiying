@@ -1,7 +1,7 @@
 """主窗口 — 集成所有 UI 组件和核心逻辑"""
 import cv2
 import numpy as np
-from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QMessageBox
+from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QMessageBox, QDialog, QLabel
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap
 
@@ -31,6 +31,8 @@ class MainWindow(QMainWindow):
         self._scores: dict[str, float] = {}           # path -> score
         self._score_sources: dict[str, str] = {}      # path -> "algorithm" / "ai"
         self._current_mode = "algorithm"
+        self._filter_total = 0
+        self._filter_completed = 0
 
         self._setup_ui()
         self._connect_signals()
@@ -80,6 +82,8 @@ class MainWindow(QMainWindow):
         self.sidebar.test_connection_clicked.connect(self._test_ai_connection)
 
         self.preview_panel.selection_changed.connect(self._update_stats)
+        self.preview_panel.image_double_clicked.connect(self._show_preview)
+        self.sidebar.stat_clicked.connect(self._on_stat_clicked)
 
     def _on_directory_selected(self, dir_path: str):
         self.preview_panel.clear()
@@ -98,6 +102,7 @@ class MainWindow(QMainWindow):
         self.status_bar.show_progress(count, self.loader.total_count)
 
     def _on_all_loaded(self):
+        self.preview_panel.finalize_layout()
         self.status_bar.set_status(f"加载完成，共 {len(self._image_paths)} 张图片")
         self.status_bar.hide_progress()
         self.toolbar.enable_export(False)
@@ -106,6 +111,8 @@ class MainWindow(QMainWindow):
     def _on_filter_clicked(self):
         if not self._image_paths:
             return
+        self.toolbar.set_filter_running(True)
+        self.toolbar.enable_export(False)
         self.status_bar.set_status("正在筛选...")
         if self._current_mode == "algorithm":
             self._filter_algorithm()
@@ -113,7 +120,8 @@ class MainWindow(QMainWindow):
             self._filter_ai()
 
     def _filter_algorithm(self):
-        total = len(self._image_paths)
+        self._filter_total = len(self._image_paths)
+        self._filter_completed = 0
 
         def process_image(path: str) -> tuple[str, float]:
             img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
@@ -160,12 +168,14 @@ class MainWindow(QMainWindow):
                     result = await agent.score_image(path)
                     self._scores[path] = result["score"]
                     self._score_sources[path] = "ai"
-                    self.preview_panel.update_score(path, result["score"], "ai")
+                    threshold = self.sidebar.threshold_slider.value()
+                    self.preview_panel.update_score(path, result["score"], "ai", threshold)
                     consecutive_errors = 0
                 except Exception as e:
                     self._scores[path] = 0.0
                     self._score_sources[path] = "ai"
-                    self.preview_panel.update_score(path, 0.0, "ai(error)")
+                    threshold = self.sidebar.threshold_slider.value()
+                    self.preview_panel.update_score(path, 0.0, "ai(error)", threshold)
                     consecutive_errors += 1
                     logger.error("AI 评分失败: %s — %s", path, e, exc_info=True)
                     # 连续失败 3 次，停止筛选
@@ -177,6 +187,7 @@ class MainWindow(QMainWindow):
                     self.status_bar.show_progress(self._ai_completed, total)
             await agent.close()
             self._update_stats()
+            self.toolbar.set_filter_running(False)
             self.toolbar.enable_export(True)
             self.status_bar.set_status(f"AI 筛选完成，共 {total} 张图片")
 
@@ -194,18 +205,26 @@ class MainWindow(QMainWindow):
             logger.error("AI 筛选线程异常: %s", err),
             QMessageBox.critical(self, "AI 筛选出错", f"筛选中断：{err}\n\n请检查模型配置是否正确。"),
             self.status_bar.set_status("AI 筛选出错"),
+            self.toolbar.set_filter_running(False),
         ))
 
     def _on_score_result(self, result: tuple[str, float]):
         path, score = result
         self._scores[path] = score
         self._score_sources[path] = "algorithm"
-        self.preview_panel.update_score(path, score, "algorithm")
+        threshold = self.sidebar.threshold_slider.value()
+        self.preview_panel.update_score(path, score, "algorithm", threshold)
+        self._filter_completed += 1
+        self.status_bar.show_progress(self._filter_completed, self._filter_total)
         self._update_stats()
-        self.toolbar.enable_export(True)
+        if self._filter_completed >= self._filter_total:
+            self.toolbar.set_filter_running(False)
+            self.toolbar.enable_export(True)
+            self.status_bar.set_status(f"筛选完成，共 {self._filter_total} 张图片")
+            self.status_bar.hide_progress()
 
     def _on_threshold_changed(self, threshold: int):
-        self.preview_panel.select_above_score(threshold)
+        self.preview_panel.refresh_borders(threshold)
         self._update_stats()
 
     def _on_mode_changed(self, mode: str):
@@ -230,9 +249,11 @@ class MainWindow(QMainWindow):
         if not dst_dir:
             return
 
+        self.toolbar.enable_export(False)
         self.status_bar.set_status("正在导出...")
         result = export_images(selected, dst_dir, lambda c, t: self.status_bar.show_progress(c, t))
         logger.info("导出完成: 成功 %d, 跳过 %d, 失败 %d", result['success'], result['skipped'], result['failed'])
+        self.toolbar.enable_export(True)
         self.status_bar.set_status(f"导出完成: 成功 {result['success']}, 跳过 {result['skipped']}, 失败 {result['failed']}")
 
     def _test_ai_connection(self):
@@ -279,6 +300,45 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "连接测试", f"连接异常: {err}"),
             self.status_bar.set_status("就绪"),
         ))
+
+    def _show_preview(self, image_path: str):
+        """双击图片弹出大图预览"""
+        pixmap = QPixmap(image_path)
+        if pixmap.isNull():
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(image_path.split("/")[-1])
+        dialog.setMinimumSize(800, 600)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        label = QLabel()
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        scaled = pixmap.scaled(
+            dialog.size(), Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        )
+        label.setPixmap(scaled)
+        layout.addWidget(label)
+
+        dialog.exec()
+
+    def _on_stat_clicked(self, stat_type: str):
+        """点击统计信息筛选显示对应图片"""
+        if stat_type == "total":
+            self.preview_panel.show_all()
+            self.status_bar.set_status("显示全部图片")
+        elif stat_type == "selected":
+            self.preview_panel.show_only_selected()
+            count = len(self.preview_panel.get_selected_paths())
+            self.status_bar.set_status(f"筛选已选择: {count} 张")
+        elif stat_type == "above_threshold":
+            threshold = self.sidebar.threshold_slider.value()
+            self.preview_panel.show_only_above_threshold(threshold)
+            count = sum(1 for s in self._scores.values() if s >= threshold)
+            self.status_bar.set_status(f"筛选高于阈值({threshold}): {count} 张")
 
     def _update_stats(self):
         total = len(self._image_paths)
