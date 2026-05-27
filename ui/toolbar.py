@@ -9,6 +9,7 @@ class Toolbar(QWidget):
     directory_selected = pyqtSignal(str)
     filter_clicked = pyqtSignal()
     export_clicked = pyqtSignal()
+    compress_clicked = pyqtSignal()
     select_all_clicked = pyqtSignal()
     sort_clicked = pyqtSignal()
 
@@ -54,6 +55,11 @@ class Toolbar(QWidget):
         self.export_btn.clicked.connect(self.export_clicked.emit)
         layout.addWidget(self.export_btn)
 
+        self.compress_btn = QPushButton("压缩导出")
+        self.compress_btn.setEnabled(False)
+        self.compress_btn.clicked.connect(self.compress_clicked.emit)
+        layout.addWidget(self.compress_btn)
+
     def _select_directory(self):
         dir_path = QFileDialog.getExistingDirectory(self, "选择图片目录")
         if dir_path:
@@ -80,6 +86,9 @@ class Toolbar(QWidget):
 
     def enable_export(self, enabled: bool):
         self.export_btn.setEnabled(enabled)
+
+    def enable_compress(self, enabled: bool):
+        self.compress_btn.setEnabled(enabled)
 
     def set_filter_running(self, running: bool):
         self.filter_btn.setEnabled(not running)

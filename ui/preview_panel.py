@@ -1,6 +1,6 @@
 """图片网格预览面板"""
 from PyQt6.QtWidgets import (
-    QWidget, QGridLayout, QLabel, QCheckBox, QVBoxLayout, QScrollArea, QSizePolicy
+    QWidget, QLabel, QCheckBox, QVBoxLayout, QScrollArea, QSizePolicy, QApplication
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QEvent
 from PyQt6.QtGui import QPixmap, QMouseEvent, QResizeEvent
@@ -12,14 +12,14 @@ class ImageCard(QWidget):
     toggled = pyqtSignal(str, bool)
     double_clicked = pyqtSignal(str)
 
-    def __init__(self, image_path: str, pixmap: QPixmap, parent=None):
+    def __init__(self, image_path: str, pixmap: QPixmap, index: int = 0, parent=None):
         super().__init__(parent)
         self.image_path = image_path
         self._score = 0.0
         self._source = ""
-        self._setup_ui(pixmap)
+        self._setup_ui(pixmap, index)
 
-    def _setup_ui(self, pixmap: QPixmap):
+    def _setup_ui(self, pixmap: QPixmap, index: int = 0):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(2)
@@ -29,6 +29,14 @@ class ImageCard(QWidget):
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setFixedSize(256, 256)
         layout.addWidget(self.image_label)
+
+        self.index_label = QLabel(str(index), self.image_label)
+        self.index_label.setStyleSheet(
+            "background: rgba(0,0,0,120); color: white; font-size: 11px; "
+            "padding: 1px 4px; border-radius: 3px;"
+        )
+        self.index_label.move(4, 4)
+        self.index_label.adjustSize()
 
         self.score_label = QLabel("--")
         self.score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -81,40 +89,54 @@ class PreviewPanel(QWidget):
         self.scroll_area.setWidgetResizable(True)
 
         self.grid_widget = QWidget()
-        self.grid_layout = QGridLayout(self.grid_widget)
-        self.grid_layout.setSpacing(8)
-        self.grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.grid_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
 
         self.scroll_area.setWidget(self.grid_widget)
-        self.grid_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         layout.addWidget(self.scroll_area)
 
     def add_image(self, image_path: str, pixmap: QPixmap):
-        card = ImageCard(image_path, pixmap)
+        index = len(self.cards) + 1
+        card = ImageCard(image_path, pixmap, index=index, parent=self.grid_widget)
         card.toggled.connect(self._on_card_toggled)
         card.double_clicked.connect(self.image_double_clicked.emit)
         self.cards[image_path] = card
-        # 直接追加到末尾，不触发全量重排
-        count = len(self.cards) - 1
-        cols = max(1, self.scroll_area.width() // 280)
-        row = count // cols
-        col = count % cols
-        self.grid_layout.addWidget(card, row, col)
+        # 只定位新卡片（O(1)），不做全量重排
+        self._place_card(card, index - 1)
+
+    # 卡片固定尺寸（256 图片 + 4px*2 边距 = 264 宽；256 图片 + score + checkbox + spacing + margins ≈ 300 高）
+    CARD_W = 264
+    CARD_H = 300
+    SPACING = 8
+
+    def _place_card(self, card: QWidget, index: int):
+        """定位单张卡片到网格位置，同时更新布局"""
+        card.show()
+        self._relayout_grid()
 
     def _relayout_grid(self):
-        """重新排列可见卡片到网格"""
-        cols = max(1, self.scroll_area.width() // 280)
+        """重新排列可见卡片到网格（手动定位）"""
         visible_cards = [card for card in self.cards.values() if card.isVisible()]
-        # 先移除所有卡片
-        for card in self.cards.values():
-            self.grid_layout.removeWidget(card)
-        # 只排列可见卡片
+        if not visible_cards:
+            return
+
+        spacing = self.SPACING
+        card_w = self.CARD_W
+        card_h = self.CARD_H
+        viewport_w = self.scroll_area.viewport().width()
+        cols = max(1, (viewport_w + spacing) // (card_w + spacing))
+
         for i, card in enumerate(visible_cards):
             row = i // cols
             col = i % cols
-            self.grid_layout.addWidget(card, row, col)
-        for c in range(cols):
-            self.grid_layout.setColumnStretch(c, 1)
+            x = spacing + col * (card_w + spacing)
+            y = spacing + row * (card_h + spacing)
+            card.setGeometry(x, y, card_w, card_h)
+
+        # 计算 grid_widget 所需高度
+        rows = (len(visible_cards) + cols - 1) // cols
+        total_h = spacing + rows * (card_h + spacing) + spacing
+        self.grid_widget.setFixedHeight(total_h)
+        self.grid_widget.setMinimumWidth(spacing + cols * (card_w + spacing))
 
     def resizeEvent(self, event: QResizeEvent):
         super().resizeEvent(event)
@@ -162,10 +184,11 @@ class PreviewPanel(QWidget):
 
     def clear(self):
         self.cards.clear()
-        while self.grid_layout.count():
-            item = self.grid_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        # 立即隐藏并标记删除所有子 widget
+        for child in self.grid_widget.findChildren(QWidget):
+            child.hide()
+            child.deleteLater()
+        self.grid_widget.setFixedHeight(0)
 
     def _on_card_toggled(self, path: str, checked: bool):
         self.selection_changed.emit()

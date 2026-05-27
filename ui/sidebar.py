@@ -1,7 +1,8 @@
 """侧边栏 — 阈值调节、模型配置、统计信息"""
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGroupBox, QFormLayout, QLineEdit,
-    QSlider, QLabel, QPushButton, QRadioButton, QComboBox
+    QSlider, QLabel, QPushButton, QRadioButton, QComboBox, QHBoxLayout,
+    QScrollArea, QSizePolicy
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QEvent
 from PyQt6.QtGui import QMouseEvent
@@ -70,7 +71,16 @@ class Sidebar(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        outer_layout.addWidget(scroll_area)
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(8, 8, 8, 8)
 
         # 模式选择
@@ -144,6 +154,30 @@ class Sidebar(QWidget):
         # 初始化默认提供商
         self._on_provider_changed("OpenAI")
 
+        # 压缩设置
+        compress_group = QGroupBox("压缩设置")
+        compress_layout = QFormLayout()
+
+        quality_row = QHBoxLayout()
+        self.compress_quality_slider = JumpSlider(Qt.Orientation.Horizontal)
+        self.compress_quality_slider.setRange(10, 95)
+        self.compress_quality_slider.setValue(80)
+        self.compress_quality_label = QLabel("80")
+        self.compress_quality_slider.valueChanged.connect(
+            lambda v: self.compress_quality_label.setText(str(v))
+        )
+        quality_row.addWidget(self.compress_quality_slider)
+        quality_row.addWidget(self.compress_quality_label)
+
+        self.compress_max_size_input = QLineEdit()
+        self.compress_max_size_input.setPlaceholderText("0 = 仅按质量压缩")
+        self.compress_max_size_input.setText("0")
+
+        compress_layout.addRow("质量:", quality_row)
+        compress_layout.addRow("目标大小(KB):", self.compress_max_size_input)
+        compress_group.setLayout(compress_layout)
+        layout.addWidget(compress_group)
+
         # 统计信息
         stats_group = QGroupBox("统计信息")
         stats_layout = QVBoxLayout()
@@ -167,6 +201,7 @@ class Sidebar(QWidget):
         layout.addWidget(stats_group)
 
         layout.addStretch()
+        scroll_area.setWidget(content)
 
     def _on_provider_changed(self, provider: str):
         if provider not in AI_PROVIDERS:
@@ -231,3 +266,12 @@ class Sidebar(QWidget):
 
     def get_api_key(self) -> str:
         return self.api_key_input.text().strip()
+
+    def get_compress_quality(self) -> int:
+        return self.compress_quality_slider.value()
+
+    def get_compress_max_size_kb(self) -> int:
+        try:
+            return max(0, int(self.compress_max_size_input.text()))
+        except ValueError:
+            return 0

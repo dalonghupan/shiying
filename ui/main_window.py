@@ -12,6 +12,7 @@ from ui.status_bar import StatusBar
 from core.image_loader import ImageLoader
 from core.scorer import score_image_algorithm
 from core.exporter import export_images
+from core.compressor import compress_images
 from utils.thread_manager import ThreadPoolManager
 from utils.logger import get_logger
 from config import COLOR_PRIMARY, COLOR_BACKGROUND, COLOR_BORDER
@@ -70,6 +71,7 @@ class MainWindow(QMainWindow):
         self.toolbar.directory_selected.connect(self._on_directory_selected)
         self.toolbar.filter_clicked.connect(self._on_filter_clicked)
         self.toolbar.export_clicked.connect(self._on_export_clicked)
+        self.toolbar.compress_clicked.connect(self._on_compress_clicked)
         self.toolbar.select_all_clicked.connect(self._on_select_all)
         self.toolbar.sort_clicked.connect(self._on_sort)
 
@@ -106,6 +108,7 @@ class MainWindow(QMainWindow):
         self.status_bar.set_status(f"加载完成，共 {len(self._image_paths)} 张图片")
         self.status_bar.hide_progress()
         self.toolbar.enable_export(False)
+        self.toolbar.enable_compress(False)
         self._update_stats()
 
     def _on_filter_clicked(self):
@@ -189,6 +192,7 @@ class MainWindow(QMainWindow):
             self._update_stats()
             self.toolbar.set_filter_running(False)
             self.toolbar.enable_export(True)
+            self.toolbar.enable_compress(True)
             self.status_bar.set_status(f"AI 筛选完成，共 {total} 张图片")
 
         def run_async():
@@ -220,6 +224,7 @@ class MainWindow(QMainWindow):
         if self._filter_completed >= self._filter_total:
             self.toolbar.set_filter_running(False)
             self.toolbar.enable_export(True)
+            self.toolbar.enable_compress(True)
             self.status_bar.set_status(f"筛选完成，共 {self._filter_total} 张图片")
             self.status_bar.hide_progress()
 
@@ -237,6 +242,33 @@ class MainWindow(QMainWindow):
 
     def _on_sort(self):
         self.preview_panel.sort_by_score(self.toolbar.sort_descending)
+
+    def _on_compress_clicked(self):
+        selected = self.preview_panel.get_selected_paths()
+        if not selected:
+            QMessageBox.information(self, "提示", "请先选择要压缩的图片")
+            return
+
+        from PyQt6.QtWidgets import QFileDialog
+        dst_dir = QFileDialog.getExistingDirectory(self, "选择压缩输出目录")
+        if not dst_dir:
+            return
+
+        quality = self.sidebar.get_compress_quality()
+        max_size_kb = self.sidebar.get_compress_max_size_kb()
+
+        self.toolbar.enable_compress(False)
+        self.toolbar.enable_export(False)
+        self.status_bar.set_status("正在压缩...")
+
+        result = compress_images(selected, dst_dir, quality, max_size_kb,
+                                 lambda c, t: self.status_bar.show_progress(c, t))
+        logger.info("压缩完成: 成功 %d, 跳过 %d, 失败 %d",
+                     result['success'], result['skipped'], result['failed'])
+        self.toolbar.enable_compress(True)
+        self.toolbar.enable_export(True)
+        self.status_bar.set_status(f"压缩完成: 成功 {result['success']}, 跳过 {result['skipped']}, 失败 {result['failed']}")
+        self.status_bar.hide_progress()
 
     def _on_export_clicked(self):
         selected = self.preview_panel.get_selected_paths()
